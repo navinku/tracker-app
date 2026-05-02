@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tracker — Profile</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .profile-avatar {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #1d4ed8 0%, #7c3aed 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #fff;
+      margin: 0 auto 1.5rem;
+      letter-spacing: -0.02em;
+      user-select: none;
+    }
+
+    .profile-username {
+      text-align: center;
+      font-size: 0.72rem;
+      color: #333;
+      margin-bottom: 1.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .field-label {
+      font-size: 0.65rem;
+      color: #444;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 0.35rem;
+    }
+
+    .save-feedback {
+      text-align: center;
+      font-size: 0.75rem;
+      color: #4ade80;
+      margin-top: 0.6rem;
+      min-height: 1.1rem;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .save-feedback.show { opacity: 1; }
+
+    .nav-links {
+      display: flex;
+      justify-content: center;
+      gap: 1.5rem;
+      margin-top: 1.75rem;
+    }
+
+    .nav-links a {
+      font-size: 0.75rem;
+      color: #333;
+      text-decoration: none;
+    }
+
+    .nav-links a:hover { color: #777; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div id="avatar" class="profile-avatar">?</div>
+    <div id="username-label" class="profile-username"></div>
+
+    <div class="field-label">Full Name</div>
+    <input id="full-name" type="text" placeholder="Your full name">
+
+    <button onclick="save()">Save</button>
+    <div id="feedback" class="save-feedback">Saved ✓</div>
+
+    <div class="nav-links">
+      <a href="dashboard.html">← Dashboard</a>
+      <a href="schedule.html">Schedule</a>
+      <a href="dayplan.html">Ideal Day</a>
+      <a href="#" onclick="logout()">Sign out</a>
+    </div>
+  </div>
+
+  <script>
+    const token = localStorage.getItem('token');
+    if (!token) window.location.href = 'login.html';
+
+    function logout() {
+      localStorage.removeItem('token');
+      window.location.href = 'login.html';
+    }
+
+    function initials(name) {
+      if (!name) return '?';
+      return name.trim().split(/\s+/).map(w => w[0].toUpperCase()).slice(0, 2).join('');
+    }
+
+    async function load() {
+      const res = await fetch('/profile', { headers: { 'Authorization': token } });
+      if (res.status === 401 || res.status === 403) { logout(); return; }
+      const data = await res.json();
+
+      document.getElementById('username-label').textContent = '@' + data.username;
+      document.getElementById('full-name').value = data.full_name || '';
+      document.getElementById('avatar').textContent = initials(data.full_name || data.username);
+    }
+
+    document.getElementById('full-name').addEventListener('input', () => {
+      const v = document.getElementById('full-name').value;
+      document.getElementById('avatar').textContent = initials(v);
+    });
+
+    async function save() {
+      const full_name = document.getElementById('full-name').value.trim();
+      const res = await fetch('/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': token },
+        body: JSON.stringify({ full_name })
+      });
+      if (res.status === 401 || res.status === 403) { logout(); return; }
+
+      document.getElementById('avatar').textContent = initials(full_name);
+      const fb = document.getElementById('feedback');
+      fb.classList.add('show');
+      setTimeout(() => fb.classList.remove('show'), 2000);
+    }
+
+    document.addEventListener('keydown', e => { if (e.key === 'Enter') save(); });
+
+    load();
+  </script>
+</body>
+</html>

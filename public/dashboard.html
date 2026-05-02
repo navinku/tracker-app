@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tracker — Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div style="position:fixed;top:1rem;left:1rem;display:flex;gap:1rem;z-index:99;">
+    <a href="schedule.html" style="font-size:0.78rem;color:#444;text-decoration:none;" onmouseover="this.style.color='#888'" onmouseout="this.style.color='#444'">Schedule</a>
+    <a href="dayplan.html"  style="font-size:0.78rem;color:#444;text-decoration:none;" onmouseover="this.style.color='#888'" onmouseout="this.style.color='#444'">Ideal Day</a>
+    <a href="scores.html"   style="font-size:0.78rem;color:#444;text-decoration:none;" onmouseover="this.style.color='#888'" onmouseout="this.style.color='#444'">Scores</a>
+    <a href="profile.html"  style="font-size:0.78rem;color:#444;text-decoration:none;" onmouseover="this.style.color='#888'" onmouseout="this.style.color='#444'">Profile</a>
+  </div>
+  <button class="logout" onclick="logout()">Sign out</button>
+
+  <div class="field-legend">
+    <div class="field-legend-item">
+      <span class="field-legend-desc">What you're doing right now</span>
+      <span class="field-legend-key">NOW</span>
+    </div>
+    <div class="field-legend-item">
+      <span class="field-legend-desc">What you'll do immediately after</span>
+      <span class="field-legend-key">NEXT</span>
+    </div>
+    <div class="field-legend-item">
+      <span class="field-legend-desc">What pulled you off your plan</span>
+      <span class="field-legend-key">DRIFT</span>
+    </div>
+    <div class="field-legend-divider"></div>
+    <div class="field-legend-score-block">
+      <div class="score-block-header">
+        <span class="field-legend-key">SCORE</span>
+        <span class="score-block-sub">execution quality</span>
+      </div>
+      <div class="score-levels">
+        <div class="score-level" data-s="1">
+          <span class="score-dot"></span>
+          <span class="score-num">1</span>
+          <span class="score-text">Completely lost</span>
+        </div>
+        <div class="score-level" data-s="2">
+          <span class="score-dot"></span>
+          <span class="score-num">2</span>
+          <span class="score-text">Heavy drift</span>
+        </div>
+        <div class="score-level" data-s="3">
+          <span class="score-dot"></span>
+          <span class="score-num">3</span>
+          <span class="score-text">Partial focus</span>
+        </div>
+        <div class="score-level" data-s="4">
+          <span class="score-dot"></span>
+          <span class="score-num">4</span>
+          <span class="score-text">Focused, minor drift</span>
+        </div>
+        <div class="score-level" data-s="5">
+          <span class="score-dot"></span>
+          <span class="score-num">5</span>
+          <span class="score-text">Deep work, zero drift</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="greeting" id="greeting"></div>
+    <h2>Daily Tracker</h2>
+
+    <!-- Today's schedule strip -->
+    <div class="today-schedule">
+      <div id="today-date" class="today-date"></div>
+      <div id="today-slots" class="today-slots"></div>
+    </div>
+
+    <input id="now" type="text" placeholder="NOW — what are you focused on?">
+    <input id="next" type="text" placeholder="NEXT — what comes after?">
+    <textarea id="drift" placeholder="Drift — what pulled you off track?"></textarea>
+    <div class="score-row">
+      <input id="score" type="number" min="1" max="5" placeholder="Score">
+      <span>/ 5</span>
+    </div>
+    <button onclick="save()">Save Entry</button>
+
+    <h3>History</h3>
+    <ul id="logs" class="log-list">
+      <li class="empty">Loading...</li>
+    </ul>
+  </div>
+
+  <script src="schedule-data.js"></script>
+  <script>
+    const token = localStorage.getItem('token');
+    if (!token) window.location.href = 'login.html';
+
+    function salutation() {
+      const h = new Date().getHours();
+      if (h >= 5  && h < 12) return { text: 'Good morning',   emoji: '☀️' };
+      if (h >= 12 && h < 17) return { text: 'Good afternoon', emoji: '🌤️' };
+      if (h >= 17 && h < 21) return { text: 'Good evening',   emoji: '🌇' };
+      return                        { text: 'Still up',        emoji: '🌙' };
+    }
+
+    async function setGreeting() {
+      const { text, emoji } = salutation();
+      let displayName = '';
+      try {
+        const res = await fetch('/profile', { headers: { 'Authorization': token } });
+        if (res.ok) {
+          const data = await res.json();
+          displayName = data.full_name || data.username || '';
+        }
+      } catch {}
+      document.getElementById('greeting').innerHTML =
+        `<span class="greeting-emoji">${emoji}</span>` +
+        `<span class="greeting-text">${text}${displayName ? ', ' + displayName : ''}</span>`;
+    }
+
+    setGreeting();
+
+    function logout() {
+      localStorage.removeItem('token');
+      window.location.href = 'login.html';
+    }
+
+    /* ─── Schedule data from shared file ─────────────────────── */
+    let rows = SCHEDULE_ROWS.map(r => ({ ...r, cells: r.cells.map(c => [...c]) }));
+
+    async function loadOverrides() {
+      try {
+        const res = await fetch('/schedule/overrides', { headers: { 'Authorization': token } });
+        if (!res.ok) return;
+        const data = await res.json();
+        rows = applyOverrides(SCHEDULE_ROWS, data);
+        buildSchedule();
+      } catch {}
+    }
+
+    // re-sync when schedule.html saves a change in another tab
+    window.addEventListener('storage', e => {
+      if (e.key === 'schedule_updated') loadOverrides();
+    });
+
+    function toMins(h, m) { return h * 60 + m; }
+
+    function getDayIdx() {
+      const jsDay = new Date().getDay();
+      return jsDay === 0 ? 6 : jsDay - 1;  // 0=Mon…6=Sun
+    }
+
+    function getActiveRow() {
+      const now = new Date();
+      const cur = toMins(now.getHours(), now.getMinutes());
+      for (let i = 0; i < rows.length; i++) {
+        const { s, e, overnight } = rows[i];
+        const start = toMins(s[0], s[1]), end = toMins(e[0], e[1]);
+        if (overnight ? (cur >= start || cur < end) : (cur >= start && cur < end)) return i;
+      }
+      return -1;
+    }
+
+    function buildSchedule() {
+      const now   = new Date();
+      const days  = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+      const months= ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      document.getElementById('today-date').textContent =
+        `${days[now.getDay()]}  ·  ${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()}`;
+
+      const dayIdx    = getDayIdx();
+      const activeRow = getActiveRow();
+      const cur       = toMins(now.getHours(), now.getMinutes());
+
+      const wrap = document.getElementById('today-slots');
+      wrap.innerHTML = '';
+
+      rows.forEach((row, ri) => {
+        const [label, cls] = row.cells[dayIdx];
+        if (cls === 'off' || cls === 'sleep') return;
+
+        const start = toMins(row.s[0], row.s[1]);
+        const end   = toMins(row.e[0], row.e[1]);
+
+        let state = '';
+        if (ri === activeRow) {
+          state = 'active-slot';
+        } else {
+          const isPast = row.overnight
+            ? false
+            : end <= cur;
+          if (isPast) state = 'past';
+        }
+
+        const pill = document.createElement('div');
+        pill.className = `slot-pill slot-${cls} ${state}`;
+        pill.id = `pill-${ri}`;
+        pill.innerHTML = `<span class="pill-time">${row.time}</span><span class="pill-label">${label}</span>`;
+        wrap.appendChild(pill);
+      });
+    }
+
+    function updateActiveSlot() {
+      const activeRow = getActiveRow();
+      document.querySelectorAll('.slot-pill').forEach(p => {
+        const ri = parseInt(p.id.replace('pill-', ''));
+        p.classList.remove('active-slot', 'past');
+        if (ri === activeRow) {
+          p.classList.add('active-slot');
+        } else {
+          const row = rows[ri];
+          const cur = toMins(new Date().getHours(), new Date().getMinutes());
+          const end = toMins(row.e[0], row.e[1]);
+          if (!row.overnight && end <= cur) p.classList.add('past');
+        }
+      });
+    }
+
+    loadOverrides();
+    setInterval(updateActiveSlot, 10000);
+
+    /* ─── Tracker CRUD ────────────────────────────────────────── */
+    async function save() {
+      const now  = document.getElementById('now').value.trim();
+      const next = document.getElementById('next').value.trim();
+      const drift = document.getElementById('drift').value.trim();
+      const score = parseInt(document.getElementById('score').value);
+      if (!now) return;
+
+      const res = await fetch('/log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': token },
+        body: JSON.stringify({ date: new Date().toISOString(), now, next, drift, score })
+      });
+
+      if (res.status === 401 || res.status === 403) { logout(); return; }
+
+      document.getElementById('now').value   = '';
+      document.getElementById('next').value  = '';
+      document.getElementById('drift').value = '';
+      document.getElementById('score').value = '';
+      loadLogs();
+    }
+
+    async function deleteLog(id) {
+      await fetch(`/log/${id}`, { method: 'DELETE', headers: { 'Authorization': token } });
+      loadLogs();
+    }
+
+    async function loadLogs() {
+      const res = await fetch('/logs', { headers: { 'Authorization': token } });
+      if (res.status === 401 || res.status === 403) { logout(); return; }
+
+      const data = await res.json();
+      const list = document.getElementById('logs');
+
+      if (data.length === 0) {
+        list.innerHTML = '<li class="empty">No entries yet. Add your first one above.</li>';
+        return;
+      }
+
+      list.innerHTML = data.map(l => {
+        const d = new Date(l.date);
+        const dateStr = d.toLocaleDateString('en-US', {
+          weekday: 'short', month: 'short', day: 'numeric',
+          hour: '2-digit', minute: '2-digit'
+        });
+        return `
+          <li class="log-item">
+            <div class="log-date">${dateStr}</div>
+            <div class="log-now">${escHtml(l.now)}</div>
+            ${l.next  ? `<div class="log-next">→ ${escHtml(l.next)}</div>`   : ''}
+            ${l.drift ? `<div class="log-drift">${escHtml(l.drift)}</div>`   : ''}
+            ${l.score ? `<div class="log-score">${l.score}</div>`            : ''}
+            <button class="delete-btn" onclick="deleteLog(${l.id})">delete</button>
+          </li>`;
+      }).join('');
+    }
+
+    function escHtml(str) {
+      const d = document.createElement('div');
+      d.textContent = str || '';
+      return d.innerHTML;
+    }
+
+    loadLogs();
+  </script>
+</body>
+</html>

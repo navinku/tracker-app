@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tracker — Ideal Day</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #080808;
+      color: #ccc;
+      min-height: 100vh;
+    }
+
+    /* ── Nav ─────────────────────────────────────────────────── */
+    nav {
+      position: sticky; top: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.7rem 1.5rem;
+      background: #0a0a0a; border-bottom: 1px solid #161616;
+    }
+    .nav-links { display: flex; gap: 1.25rem; }
+    .nav-links a { font-size: 0.78rem; color: #444; text-decoration: none; }
+    .nav-links a:hover { color: #888; }
+    nav h1 { font-size: 0.92rem; font-weight: 600; color: #fff; letter-spacing: -0.02em; }
+
+    /* ── Page ────────────────────────────────────────────────── */
+    .page { max-width: 860px; margin: 0 auto; padding: 2.5rem 1.5rem 5rem; }
+
+    .page-heading {
+      margin-bottom: 0.4rem;
+    }
+    .page-heading h2 {
+      font-size: 1.3rem; font-weight: 700; color: #fff; letter-spacing: -0.03em;
+    }
+    .page-heading p {
+      font-size: 0.72rem; color: #333; margin-top: 0.3rem;
+      letter-spacing: 0.02em;
+    }
+
+    /* ── Active time indicator ───────────────────────────────── */
+    #now-indicator {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      background: #0e1628; border: 1px solid #1e3a6e;
+      border-radius: 20px; padding: 0.3rem 0.85rem;
+      font-size: 0.7rem; color: #60a5fa;
+      margin: 1rem 0 2rem;
+    }
+    #now-indicator .dot {
+      width: 6px; height: 6px; border-radius: 50%; background: #2563eb;
+      animation: blink 1.2s ease-in-out infinite;
+    }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+    /* ── Timeline ────────────────────────────────────────────── */
+    .timeline { position: relative; }
+
+    /* left time gutter line */
+    .timeline::before {
+      content: '';
+      position: absolute;
+      left: 52px; top: 0; bottom: 0;
+      width: 1px; background: #161616;
+    }
+
+    .block {
+      display: flex; gap: 0; align-items: stretch;
+      margin-bottom: 3px; position: relative;
+    }
+
+    .block-time {
+      width: 52px; flex-shrink: 0;
+      font-size: 0.58rem; color: #2a2a2a;
+      text-align: right; padding-right: 10px;
+      font-variant-numeric: tabular-nums;
+      display: flex; align-items: flex-start; padding-top: 10px;
+      line-height: 1;
+    }
+
+    .block-bar {
+      width: 3px; flex-shrink: 0; border-radius: 2px; margin: 2px 10px 2px 0;
+      align-self: stretch;
+    }
+
+    .block-content {
+      flex: 1; border-radius: 8px; padding: 0.6rem 0.85rem;
+      border: 1px solid transparent; position: relative;
+      transition: filter 0.15s;
+    }
+    .block-content:hover { filter: brightness(1.15); }
+
+    .block.active-block .block-content {
+      border-color: #2563eb !important;
+      filter: brightness(1.3);
+      box-shadow: 0 0 16px rgba(37,99,235,0.15);
+    }
+    .block.active-block .block-bar { box-shadow: 0 0 8px currentColor; }
+
+    .block-header {
+      display: flex; align-items: baseline; gap: 0.5rem; flex-wrap: wrap;
+      margin-bottom: 0.2rem;
+    }
+
+    .block-emoji { font-size: 0.95rem; line-height: 1; }
+
+    .block-title {
+      font-size: 0.82rem; font-weight: 700; color: #e0e0e0;
+      letter-spacing: -0.01em;
+    }
+
+    .block-range {
+      font-size: 0.6rem; color: #333; font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .block-badge {
+      font-size: 0.52rem; font-weight: 700; letter-spacing: 0.06em;
+      padding: 0.15rem 0.45rem; border-radius: 20px;
+      text-transform: uppercase; margin-left: auto; white-space: nowrap;
+      align-self: center;
+    }
+    .badge-work  { background: #0a2010; color: #4ade80; border: 1px solid #14532d; }
+    .badge-nowork { background: #111; color: #333; border: 1px solid #1a1a1a; }
+
+    .block-detail {
+      font-size: 0.68rem; color: #444; line-height: 1.5; margin-top: 0.25rem;
+    }
+    .block-detail .sub-day {
+      display: block; color: #333; font-size: 0.63rem; margin-top: 0.15rem;
+    }
+
+    /* separator: non-working divider */
+    .divider {
+      display: flex; align-items: center; gap: 0.75rem;
+      margin: 1.25rem 0 1rem 62px;
+    }
+    .divider span { font-size: 0.58rem; color: #222; text-transform: uppercase; letter-spacing: 0.1em; white-space: nowrap; }
+    .divider::before, .divider::after { content:''; flex:1; height:1px; background:#161616; }
+
+    /* ── Category colours ────────────────────────────────────── */
+    .c-yoga      { background:#130e1e; border-color:#1e1530 !important; }
+    .c-yoga      .block-bar { background:#b197fc; color:#b197fc; }
+    .c-yoga      .block-title { color:#b197fc; }
+
+    .c-personal  { background:#080f1e; border-color:#0d1a30 !important; }
+    .c-personal  .block-bar { background:#74b0f7; color:#74b0f7; }
+    .c-personal  .block-title { color:#74b0f7; }
+
+    .c-worklearn { background:#12100a; border-color:#1e1a0e !important; }
+    .c-worklearn .block-bar { background:#f5c842; color:#f5c842; }
+    .c-worklearn .block-title { color:#f5c842; }
+
+    .c-family    { background:#180c14; border-color:#241220 !important; }
+    .c-family    .block-bar { background:#f7a4ca; color:#f7a4ca; }
+    .c-family    .block-title { color:#f7a4ca; }
+
+    .c-apac      { background:#06111e; border-color:#0a1e30 !important; }
+    .c-apac      .block-bar { background:#38bdf8; color:#38bdf8; }
+    .c-apac      .block-title { color:#38bdf8; }
+
+    .c-deep      { background:#180d04; border-color:#241508 !important; }
+    .c-deep      .block-bar { background:#fb923c; color:#fb923c; }
+    .c-deep      .block-title { color:#fb923c; }
+
+    .c-lunch     { background:#111; border-color:#1a1a1a !important; }
+    .c-lunch     .block-bar { background:#555; color:#555; }
+    .c-lunch     .block-title { color:#555; }
+
+    .c-tickets   { background:#180606; border-color:#240a0a !important; }
+    .c-tickets   .block-bar { background:#f87171; color:#f87171; }
+    .c-tickets   .block-title { color:#f87171; }
+
+    .c-enhance   { background:#06160d; border-color:#0a2014 !important; }
+    .c-enhance   .block-bar { background:#34d399; color:#34d399; }
+    .c-enhance   .block-title { color:#34d399; }
+
+    .c-emea      { background:#0d0820; border-color:#160e30 !important; }
+    .c-emea      .block-bar { background:#9ca3f0; color:#9ca3f0; }
+    .c-emea      .block-title { color:#9ca3f0; }
+
+    .c-docs      { background:#0c1506; border-color:#162008 !important; }
+    .c-docs      .block-bar { background:#a3e635; color:#a3e635; }
+    .c-docs      .block-title { color:#a3e635; }
+
+    .c-dinner    { background:#180c14; border-color:#241220 !important; }
+    .c-dinner    .block-bar { background:#fda4af; color:#fda4af; }
+    .c-dinner    .block-title { color:#fda4af; }
+
+    .c-us        { background:#06111e; border-color:#0a1e30 !important; }
+    .c-us        .block-bar { background:#60a5fa; color:#60a5fa; }
+    .c-us        .block-title { color:#60a5fa; }
+
+    .c-workout   { background:#06150a; border-color:#0a2010 !important; }
+    .c-workout   .block-bar { background:#4ade80; color:#4ade80; }
+    .c-workout   .block-title { color:#4ade80; }
+
+    .c-wind      { background:#0b0b0b; border-color:#161616 !important; }
+    .c-wind      .block-bar { background:#374151; color:#374151; }
+    .c-wind      .block-title { color:#374151; }
+
+    /* ── Budget table ────────────────────────────────────────── */
+    .budget-section { margin-top: 3rem; }
+
+    .budget-section h3 {
+      font-size: 0.7rem; font-weight: 700; color: #555;
+      text-transform: uppercase; letter-spacing: 0.1em;
+      margin-bottom: 1rem;
+    }
+
+    .budget-table { width: 100%; border-collapse: collapse; font-size: 0.72rem; }
+
+    .budget-table th {
+      text-align: left; padding: 0.5rem 0.75rem;
+      font-size: 0.58rem; color: #333; text-transform: uppercase;
+      letter-spacing: 0.08em; font-weight: 700;
+      border-bottom: 1px solid #161616;
+    }
+
+    .budget-table td {
+      padding: 0.55rem 0.75rem; border-bottom: 1px solid #111;
+      vertical-align: middle; line-height: 1.4;
+    }
+
+    .budget-table tr:hover td { background: #0d0d0d; }
+
+    .budget-table td:nth-child(2),
+    .budget-table td:nth-child(3),
+    .budget-table td:nth-child(4) {
+      text-align: center; font-variant-numeric: tabular-nums;
+      white-space: nowrap; color: #555;
+    }
+
+    .budget-table td:first-child { color: #999; }
+    .budget-table td:nth-child(4) { color: #e0e0e0; font-weight: 700; }
+
+    .budget-table .note { font-size: 0.6rem; color: #333; }
+
+    .budget-table tr.section-meeting td { background: #06111e; }
+    .budget-table tr.section-work td { background: #070a07; }
+    .budget-table tr.total td {
+      background: #0f0f0f; border-top: 1px solid #2a2a2a;
+      font-weight: 700; font-size: 0.78rem;
+    }
+    .budget-table tr.total td:first-child { color: #e0e0e0; }
+    .budget-table tr.total td:nth-child(4) { color: #4ade80; font-size: 0.9rem; }
+
+    .budget-bar-wrap { width: 80px; display: inline-block; vertical-align: middle; margin-left: 0.5rem; }
+    .budget-bar-bg { height: 4px; background: #1a1a1a; border-radius: 2px; overflow: hidden; }
+    .budget-bar-fill { height: 100%; border-radius: 2px; }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-links">
+    <a href="dashboard.html">← Dashboard</a>
+    <a href="schedule.html">Schedule</a>
+    <a href="scores.html">Scores</a>
+    <a href="profile.html">Profile</a>
+  </div>
+  <h1>Ideal Day</h1>
+  <div style="width:80px;"></div>
+</nav>
+
+<div class="page">
+
+  <div class="page-heading">
+    <h2>Ideal Weekday Template</h2>
+    <p>Full day  ·  05:30 → 22:00 IST  ·  40 hr/week work budget</p>
+  </div>
+
+  <div id="now-indicator">
+    <span class="dot"></span>
+    <span id="now-text">Loading…</span>
+  </div>
+
+  <div class="timeline" id="timeline">
+
+    <!-- 🧘 Yoga -->
+    <div class="block c-yoga" id="b-yoga" data-start="5:30" data-end="6:30">
+      <div class="block-time">05:30</div>
+      <div class="block-bar"></div>
+      <div class="block-content">
+        <div class="block-header">
+          <span class="block-emoji">🧘</span>
+          <span class="block-title">Morning Yoga + Meditation</span>
+          <span class="block-range">05:30 – 06:30 · 60 min</span>
+          <span class="block-badge badge-nowork">Not in 40 h</span>
+        </div>
+        <div class="block-detail">Daily non-negotiable. Sets focus and clarity for the day.</div>
+      </div>
+    </div>
+
+    <!-- 📚 Personal Learning -->
+    <div class="block c-personal" id="b-personal" data-start="6:30" data-end="7:00">
+      <div class="block-time">06:30</div>
+      <div class="block-bar"></div>
+      <div class="block-content">
+        <div class="block-header">
+          <span class="block-emoji">📚</span>
+          <span class="block-title">Personal Learning</span>
+          <span class="block-range">06:30 – 07:00 · 30 min</span>
+          <span class="block-badge badge-nowork">Not in 40 h</span>
+        </div>
+        <div class="block-detail">Books, personal interests, general reading.</div>
+      </div>
+    </div>
+
+    <!-- 💻 Work Learning -->
+    <div class="block c-worklearn" id="b-worklearn" data-start="7:00" data-end="7:30">
+      <div class="block-time">07:00</div>
+      <div class="block-bar"></div>
+      <div class="block-content">
+        <div class="block-header">
+          <span class="block-emoji">💻</span>
+          <span class="block-title">Work-related Learning</span>
+          <span class="block-range">07:00 – 07:30 · 30 min</span>
+          <span class="block-badge badge-work">Work ✓</span>
+        </div>
+        <div class="block-detail">Cert prep, tech docs, architecture reading. Counts in 40 hrs.</div>
+      </div>
+    </div>
+
+    <!-- 🚸 School bus -->
+    <div class="block c-family" id="b-bus" data-start="7:30" data-end="8:00">
+      <div class="block-time">07:30</div>
+      <div class="block-bar"></div>
+      <div class="block-content">
+        <div class="block-header">
+          <span class="block-emoji">🚸</span>
+          <span class="block-title">Kid School Bus Drop</span>
+          <span class="block-range">07:30 – 08:00 · 30 min</span>
+          <span class="block-badge badge-nowork">Not in 40 h</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 🏠 Breakfast -->
+    <div class="block c-family" id="b-breakfast" data-start="8:00" data-end="8:30">
+      <div class="block-time">08:00</div>
+      <div class="block-bar"></div>
+      <div class="block-content">
+        <div class="block-header">
+          <span class="block-emoji">🏠</span>
+          <span class="block-title">Breakfast + Inhouse Tasks</span>
+          <span class="block-range">08:00 – 08:30 · 30 min</span>
+          <span class="block-badge badge-nowork">Not in 40 h</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 🌏 APAC Standup -->
+    <div class="block c-apac" id="b-apac" data-start="8:30" data-end="9:00">
+      <div class="block-time">08:30</div>
+      <div class="block-bar"></div>
+      <div class="block-content">
+        <div class="block-header">
+          <span class="block-emoji">🌏</span>
+          <span class="block-title">APAC Standup</span>
+          <span class="block-range">08:30 – 09:00 · 30 min</span>
+          <span class="block-badge badge-work">Work ✓</span>
+        </div>
+        <div class="block-detail">Daily team standup. 2.5 h / week.</div>
+      </div>
+    </div>
+
+    <!-- 💻 Work Learning + APAC async -->
+    <div class="block c-worklearn" id="b-async" data-start="9:00" data-end="10:00">
+      <div class="block-time">09:00</div>
+      <div class="block-bar"></div>
+      <div class="block-content">
+        <div class="block-header">
+          <span class="block-emoji">💻</span>
+          <span class="block-title">Work Learning + APAC Async</span>
+          <span class="block-range">09:00 – 10:00 · 60 min</span>
+          <span class="block-badge badge-work">Work ✓</span>
+        </div>
+        <div class="block-detail">Finish cert module, review PRs, reply to async APAC messages.</div>
+      </div>
+    </div>
+
+    <!-- 🔵 Deep Work -->
+    <div class="block c-deep" id="b-deep" data-start="10:00" data-end="13:00">
+      <div class="block-time">10:00</div>
+      <div class="block-bar"></div>
+      <div class="block-content">
+        <div class="block-header">
+          <span class="block-emoji">🔵</span>
+          <span class="block-title">DEEP WORK — Protected Block</span>
+          <span class="block-range">10:00 – 13:00 · 3 hrs</span>
+          <span class="block-badge badge-work">Work ✓ 3 h</span>
+        </div>
+        <div class="block-detail">
+          Slack DND · Zero meetings · Full focus.
+          <span class="sub-day">Mon — POC / automation script</span>
+          <span class="sub-day">Tue — Migration chunk (1 task)</span>
+          <span class="sub-day">Wed — DB / access mgmt / security</span>
+          <span class="sub-day">Thu — Upgrades / IaC / patching</span>
+          <span class="sub-day">Fri — Docs + retro + runbook update</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="divider"><span>Lunch break — screen off</span></div>
+
+    <!-- 🍽️ Lunch -->
+    <div class="block c-lunch" id="b-lunch" data-start="13:00" data-end="14:00">
+      <div class="block-time">13:00</div>
+      <div class="block-bar"></div>
+      <div class="block-content">
+        <div class="block-header">
+          <span class="block-emoji">🍽️</span>
+          <span class="block-title">Lunch + Full Rest</span>
+          <span class="block-range">13:00 – 14:00 · 60 min</span>
+          <span class="block-badge badge-nowork">Not in 40 h</span>
+        </div>
+        <div class="block-detail">Screen off. Physical rest. Recharge for afternoon.</div>
+      </div>
+    </div>
+
+    <!-- 🔴 Prod Tickets -->
+    <div class="block c-tickets" id="b-tickets" data-start="14:00" data-end="15:30">
+      <div class="block-time">14:00</div>
+      <div class="block-bar"></div>
+      <div class="block-content">
+        <div class="block-header">
+          <span class="block-emoji">🔴</span>
+          <span class="block-title">Prod Tickets + P1 Buffer</span>
+          <span class="block-range">14:00 – 15:30 · 90 min</span>
+          <span class="block-badge badge-work">Work ✓ 1.5 h</span>
+        </div>
+        <div class="block-detail">Random prod tickets, P1 response, bug fixes, triage.</div>
+      </div>
+    </div>
+
+    <!-- 🟣 Enhancement -->
+    <div class="block c-enhance" id="b-enhance" data-start="15:30" data-end="16:00">
+      <div class="block-time">15:30</div>
+      <div class="block-bar"></div>
+      <div class="block-content">
+        <div class="block-header">
+          <span class="block-emoji">🟣</span>
+          <span class="block-title">Enhancement Tickets</span>
+          <span class="block-range">15:30 – 16:00 · 30 min</span>
+          <span class="block-badge badge-work">Work ✓</span>
+        </div>
+        <div class="block-detail">Non-urgent improvements, bug fixes, small feature work.</div>
+      </div>
+    </div>
+
+    <!-- 🌍 EMEA Sync -->
+    <div class="block c-emea" id="b-emea" data-start="16:00" data-end="17:00">
+      <div class="block-time">16:00</div>
+      <div class="block-bar"></div>
+      <div class="block-content">
+        <div class="block-header">
+          <span class="block-emoji">🌍</span>
+          <span class="block-title">EMEA Sync</span>
+          <span class="block-range">16:00 – 17:00 · 60 min</span>
+          <span class="block-badge badge-work">Work ✓ 1 h</span>
+        </div>
+        <div class="block-detail">Release reviews, infra standups, cross-team syncs. 5 h / week.</div>
+      </div>
+    </div>
+
+    <!-- 📝 Docs -->
+    <div class="block c-docs" id="b-docs" data-start="17:00" data-end="18:30">
+      <div class="block-time">17:00</div>
+      <div class="block-bar"></div>
+      <div class="block-content">
+        <div class="block-header">
+          <span class="block-emoji">📝</span>
+          <span class="block-title">Docs / Runbooks / Ticket Close</span>
+          <span class="block-range">17:00 – 18:30 · 90 min</span>
+          <span class="block-badge badge-work">Work ✓ 1.5 h</span>
+        </div>
+        <div class="block-detail">Update runbooks, close tickets, write post-mortems, async EMEA replies.</div>
+      </div>
+    </div>
+
+    <div class="divider"><span>Evening — family + personal</span></div>
+
+    <!-- 🍛 Dinner -->
+    <div class="block c-dinner" id="b-dinner" data-start="18:30" data-end="19:30">
+      <div class="block-time">18:30</div>
+      <div class="block-bar"></div>
+      <div class="block-content">
+        <div class="block-header">
+          <span class="block-emoji">🍛</span>
+          <span class="block-title">Dinner + Family Time</span>
+          <span class="block-range">18:30 – 19:30 · 60 min</span>
+          <span class="block-badge badge-nowork">Not in 40 h</span>
+        </div>
+        <div class="block-detail">No screens. Full presence. Non-negotiable family time.</div>
+      </div>
+    </div>
+
+    <!-- 🇺🇸 US Standup -->
+    <div class="block c-us" id="b-us" data-start="19:30" data-end="20:00">
+      <div class="block-time">19:30</div>
+      <div class="block-bar"></div>
+      <div class="block-content">
+        <div class="block-header">
+          <span class="block-emoji">🇺🇸</span>
+          <span class="block-title">US Standup</span>
+          <span class="block-range">19:30 – 20:00 · 30 min</span>
+          <span class="block-badge badge-work">Work ✓</span>
+        </div>
+        <div class="block-detail">Mon / Wed / Fri only. 1.5 h / week.</div>
+      </div>
+    </div>
+
+    <!-- 🏃 Workout -->
+    <div class="block c-workout" id="b-workout" data-start="20:00" data-end="21:00">
+      <div class="block-time">20:00</div>
+      <div class="block-bar"></div>
+      <div class="block-content">
+        <div class="block-header">
+          <span class="block-emoji">🏃</span>
+          <span class="block-title">Evening Walk / Workout</span>
+          <span class="block-range">20:00 – 21:00 · 60 min</span>
+          <span class="block-badge badge-nowork">Not in 40 h</span>
+        </div>
+        <div class="block-detail">Daily. Walk, gym, or run. Clears end-of-day cognitive load.</div>
+      </div>
+    </div>
+
+    <!-- Wind down -->
+    <div class="block c-wind" id="b-wind" data-start="21:00" data-end="22:00">
+      <div class="block-time">21:00</div>
+      <div class="block-bar"></div>
+      <div class="block-content">
+        <div class="block-header">
+          <span class="block-emoji">🌙</span>
+          <span class="block-title">Wind Down</span>
+          <span class="block-range">21:00 – 22:00 · 60 min</span>
+          <span class="block-badge badge-nowork">Not in 40 h</span>
+        </div>
+        <div class="block-detail">No screens after 21:30. Community / blog optional 21:00–21:30. Bed by 22:00. Sleep 7.5 hrs.</div>
+      </div>
+    </div>
+
+  </div><!-- /timeline -->
+
+  <!-- ── 40-hr Budget ─────────────────────────────────────────── -->
+  <div class="budget-section">
+    <h3>Precise 40-hr Weekly Work Budget</h3>
+
+    <table class="budget-table">
+      <thead>
+        <tr>
+          <th>Category</th>
+          <th>Daily</th>
+          <th>Days / wk</th>
+          <th>Weekly hrs</th>
+          <th>Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="section-meeting">
+          <td>🌏 APAC Standup</td>
+          <td>30 min</td><td>5</td>
+          <td>2.5 h
+            <span class="budget-bar-wrap"><div class="budget-bar-bg"><div class="budget-bar-fill" style="width:6.25%;background:#38bdf8;"></div></div></span>
+          </td>
+          <td class="note">08:30–09:00 daily</td>
+        </tr>
+        <tr class="section-meeting">
+          <td>🌍 EMEA Sync</td>
+          <td>60 min</td><td>5</td>
+          <td>5 h
+            <span class="budget-bar-wrap"><div class="budget-bar-bg"><div class="budget-bar-fill" style="width:12.5%;background:#9ca3f0;"></div></div></span>
+          </td>
+          <td class="note">16:00–17:00 daily</td>
+        </tr>
+        <tr class="section-meeting">
+          <td>🇺🇸 US Standup</td>
+          <td>30 min</td><td>3</td>
+          <td>1.5 h
+            <span class="budget-bar-wrap"><div class="budget-bar-bg"><div class="budget-bar-fill" style="width:3.75%;background:#60a5fa;"></div></div></span>
+          </td>
+          <td class="note">Mon/Wed/Fri 19:30–20:00</td>
+        </tr>
+        <tr style="background:#0a0a0a;">
+          <td style="color:#555;font-weight:700;">Total meetings</td>
+          <td>—</td><td>—</td>
+          <td style="color:#60a5fa;font-weight:700;">9 h
+            <span class="budget-bar-wrap"><div class="budget-bar-bg"><div class="budget-bar-fill" style="width:22.5%;background:#60a5fa;"></div></div></span>
+          </td>
+          <td class="note">22.5% of 40 h budget</td>
+        </tr>
+        <tr><td colspan="5" style="height:6px;background:transparent;border:none;"></td></tr>
+        <tr class="section-work">
+          <td>💻 Work-related Learning</td>
+          <td>90 min</td><td>5</td>
+          <td>7.5 h
+            <span class="budget-bar-wrap"><div class="budget-bar-bg"><div class="budget-bar-fill" style="width:18.75%;background:#f5c842;"></div></div></span>
+          </td>
+          <td class="note">07:00–07:30 + 09:00–10:00</td>
+        </tr>
+        <tr class="section-work">
+          <td>🔵 Deep Work</td>
+          <td>3 h</td><td>5</td>
+          <td>15 h
+            <span class="budget-bar-wrap"><div class="budget-bar-bg"><div class="budget-bar-fill" style="width:37.5%;background:#fb923c;"></div></div></span>
+          </td>
+          <td class="note">10:00–13:00 protected</td>
+        </tr>
+        <tr class="section-work">
+          <td>🔴 Prod Tickets + P1 Buffer</td>
+          <td>90 min</td><td>5</td>
+          <td>7.5 h
+            <span class="budget-bar-wrap"><div class="budget-bar-bg"><div class="budget-bar-fill" style="width:18.75%;background:#f87171;"></div></div></span>
+          </td>
+          <td class="note">14:00–15:30 daily</td>
+        </tr>
+        <tr class="section-work">
+          <td>🟣 Enhancement + Bug Fixes</td>
+          <td>30 min</td><td>5</td>
+          <td>2.5 h
+            <span class="budget-bar-wrap"><div class="budget-bar-bg"><div class="budget-bar-fill" style="width:6.25%;background:#34d399;"></div></div></span>
+          </td>
+          <td class="note">15:30–16:00 daily</td>
+        </tr>
+        <tr class="section-work">
+          <td>📝 Docs / Runbooks / Ticket Close</td>
+          <td>90 min</td><td>5</td>
+          <td>7.5 h
+            <span class="budget-bar-wrap"><div class="budget-bar-bg"><div class="budget-bar-fill" style="width:18.75%;background:#a3e635;"></div></div></span>
+          </td>
+          <td class="note">17:00–18:30 daily</td>
+        </tr>
+        <tr class="total">
+          <td>✅ Total Work Hours</td>
+          <td>—</td><td>—</td>
+          <td>40 h
+            <span class="budget-bar-wrap"><div class="budget-bar-bg"><div class="budget-bar-fill" style="width:100%;background:#4ade80;"></div></div></span>
+          </td>
+          <td class="note" style="color:#4ade80;">Exact 40 h budget</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+</div><!-- /page -->
+
+<script>
+  const token = localStorage.getItem('token');
+  if (!token) window.location.href = 'login.html';
+
+  function toMins(str) {
+    const [h, m] = str.split(':').map(Number);
+    return h * 60 + (m || 0);
+  }
+
+  function updateActive() {
+    const now  = new Date();
+    const cur  = now.getHours() * 60 + now.getMinutes();
+    const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const timeStr = now.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+
+    document.getElementById('now-text').textContent =
+      `${days[now.getDay()]}, ${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()}  ·  ${timeStr}`;
+
+    document.querySelectorAll('.block[data-start]').forEach(el => {
+      const s = toMins(el.dataset.start);
+      const e = toMins(el.dataset.end);
+      el.classList.toggle('active-block', cur >= s && cur < e);
+    });
+  }
+
+  updateActive();
+  setInterval(updateActive, 1000);
+</script>
+</body>
+</html>
