@@ -6,8 +6,9 @@ build_and_push:
   image: docker:latest
   variables:
     AWS_DEFAULT_REGION: us-east-2
-    ECR_REGISTRY: ://amazonaws.com
-    ECR_REPO: ://amazonaws.com/tracker-app
+    # NO "://" and MUST include the Account ID
+    ECR_REGISTRY: 589535355002.dkr.ecr.us-east-2.amazonaws.com
+    ECR_REPO: 589535355002.dkr.ecr.us-east-2.amazonaws.com/tracker-app
   before_script:
     - apk add --no-cache aws-cli
     - export TIMESTAMP=$(date +%Y%m%d-%H%M)
@@ -16,8 +17,7 @@ build_and_push:
     - aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
     - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
   script:
-    # Use --provenance=false to ensure exactly ONE row appears in ECR
-    - docker build --provenance=false -t tracker-app .
+    - docker build -t tracker-app .
     - docker tag tracker-app:latest $ECR_REPO:$UNIQUE_TAG
     - docker push $ECR_REPO:$UNIQUE_TAG
   only:
