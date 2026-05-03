@@ -6,21 +6,21 @@ build_and_push:
   image: docker:latest
   variables:
     AWS_DEFAULT_REGION: us-east-2
-    ECR_REPO: ://amazonaws.com
+    # This is the REGISTRY (Domain only)
+    ECR_REGISTRY: ://amazonaws.com
+    # This is the FULL PATH
+    ECR_REPO: ://amazonaws.com/tracker-app
   before_script:
     - apk add --no-cache aws-cli
-    # Generate a timestamp (YearMonthDay-HourMinute)
     - export TIMESTAMP=$(date +%Y%m%d-%H%M)
-    # Combine branch name and timestamp for a unique tag
     - export UNIQUE_TAG="${CI_COMMIT_REF_SLUG}-${TIMESTAMP}"
     - aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
     - aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
-    - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ECR_REPO
+    # USE THE REGISTRY VARIABLE HERE:
+    - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
   script:
     - docker build -t tracker-app .
-    # Tag with the unique timestamp
     - docker tag tracker-app:latest $ECR_REPO:$UNIQUE_TAG
-    # Push ONLY this unique tag
     - docker push $ECR_REPO:$UNIQUE_TAG
   only:
     - main
