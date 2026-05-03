@@ -1,92 +1,25 @@
 stages:
   - build_and_push
-  - deploy
 
 variables:
   AWS_DEFAULT_REGION: us-east-2
   ECR_REGISTRY: 589535355002.dkr.ecr.us-east-2.amazonaws.com
   ECR_REPO: 589535355002.dkr.ecr.us-east-2.amazonaws.com/tracker-app
-  ECS_CLUSTER: tracker-app-cluster
-  ECS_SERVICE: tracker-app-service
-  ECS_TASK_FAMILY: tracker-app
 
 build_and_push:
   stage: build_and_push
   image: docker:latest
+  services:
+    - docker:dind
   before_script:
     - apk add --no-cache aws-cli
-    - export TIMESTAMP=$(date +%Y%m%d-%H%M)
-    - export UNIQUE_TAG="${CI_COMMIT_REF_SLUG}-${TIMESTAMP}"
     - aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
     - aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
     - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
   script:
-    - docker build --provenance=false -t tracker-app .
-    - docker tag tracker-app:latest $ECR_REPO:$UNIQUE_TAG
-    - docker push $ECR_REPO:$UNIQUE_TAG
-    - echo "IMAGE_TAG=$UNIQUE_TAG" >> build.env
-  artifacts:
-    reports:
-      dotenv: build.env
-  only:
-    - main
-
-deploy:
-  stage: deploy
-  image: python:3.11-alpine
-  dependencies:
-    - build_and_push
-  before_script:
-    - pip install --quiet awscli
-    - aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
-    - aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
-  script:
-    - |
-      echo "Deploying image: $ECR_REPO:$IMAGE_TAG"
-
-      # Fetch current task definition
-      TASK_DEF=$(aws ecs describe-task-definition \
-        --task-definition $ECS_TASK_FAMILY \
-        --region $AWS_DEFAULT_REGION \
-        --query taskDefinition \
-        --output json)
-
-      # Inject new image tag and strip read-only fields
-      NEW_TASK_DEF=$(echo "$TASK_DEF" | python3 -c "
-      import json, sys
-      td = json.load(sys.stdin)
-      td['containerDefinitions'][0]['image'] = '${ECR_REPO}:${IMAGE_TAG}'
-      for key in ['taskDefinitionArn','revision','status','requiresAttributes',
-                  'compatibilities','registeredAt','registeredBy']:
-          td.pop(key, None)
-      print(json.dumps(td))
-      ")
-
-      # Register new task definition revision
-      NEW_REVISION=$(aws ecs register-task-definition \
-        --cli-input-json "$NEW_TASK_DEF" \
-        --region $AWS_DEFAULT_REGION \
-        --query 'taskDefinition.revision' \
-        --output text)
-
-      echo "Registered task definition revision: $NEW_REVISION"
-
-      # Update ECS service to use new revision
-      aws ecs update-service \
-        --cluster $ECS_CLUSTER \
-        --service $ECS_SERVICE \
-        --task-definition $ECS_TASK_FAMILY:$NEW_REVISION \
-        --region $AWS_DEFAULT_REGION \
-        --output text
-
-      echo "Waiting for service to stabilize..."
-
-      # Wait until deployment completes (max ~5 min)
-      aws ecs wait services-stable \
-        --cluster $ECS_CLUSTER \
-        --services $ECS_SERVICE \
-        --region $AWS_DEFAULT_REGION
-
-      echo "Deployment complete."
+    - docker buildx create --use
+    - docker buildx build --platform linux/amd64 --provenance=false --push \
+        -t $ECR_REPO:latest \
+        -t $ECR_REPO:$CI_COMMIT_SHORT_SHA .
   only:
     - main
