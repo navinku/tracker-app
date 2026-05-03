@@ -23,9 +23,7 @@ build_and_push:
   script:
     - docker build --provenance=false -t tracker-app .
     - docker tag tracker-app:latest $ECR_REPO:$UNIQUE_TAG
-    - docker tag tracker-app:latest $ECR_REPO:latest
     - docker push $ECR_REPO:$UNIQUE_TAG
-    - docker push $ECR_REPO:latest
     - echo "IMAGE_TAG=$UNIQUE_TAG" >> build.env
   artifacts:
     reports:
