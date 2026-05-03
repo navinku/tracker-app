@@ -1,0 +1,48 @@
+{
+  "family": "tracker-app",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::589535355002:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::589535355002:role/ecsTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "name": "tracker-app",
+      "image": "589535355002.dkr.ecr.us-east-2.amazonaws.com/tracker-app:latest",
+      "essential": true,
+      "portMappings": [
+        { "containerPort": 3000, "protocol": "tcp" }
+      ],
+      "environment": [
+        { "name": "PORT", "value": "3000" }
+      ],
+      "secrets": [
+        { "name": "APP_USER",   "valueFrom": "arn:aws:ssm:us-east-2:589535355002:parameter/tracker-app/APP_USER" },
+        { "name": "APP_PASS",   "valueFrom": "arn:aws:ssm:us-east-2:589535355002:parameter/tracker-app/APP_PASS" },
+        { "name": "JWT_SECRET", "valueFrom": "arn:aws:ssm:us-east-2:589535355002:parameter/tracker-app/JWT_SECRET" }
+      ],
+      "mountPoints": [
+        { "sourceVolume": "sqlite-data", "containerPath": "/data", "readOnly": false }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/tracker-app",
+          "awslogs-region": "us-east-2",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ],
+  "volumes": [
+    {
+      "name": "sqlite-data",
+      "efsVolumeConfiguration": {
+        "fileSystemId": "fs-0598d5611faa20762",
+        "rootDirectory": "/",
+        "transitEncryption": "ENABLED"
+      }
+    }
+  ]
+}
