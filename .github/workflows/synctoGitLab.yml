@@ -10,17 +10,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # ------------------------------------------------------------
-      # 1. Checkout GitHub repository
-      # ------------------------------------------------------------
       - name: Check out source repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # ------------------------------------------------------------
-      # 2. Sync GitHub main -> GitLab main
-      # ------------------------------------------------------------
       - name: Sync to GitLab
         env:
           GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
@@ -37,54 +31,53 @@ jobs:
           git config --global user.name "${GITLAB_USERNAME}"
           git config --global user.email "${GITLAB_EMAIL}"
 
-          # --------------------------------------------------------
-          # Validate required variables
-          # --------------------------------------------------------
+          # ------------------------------------------------------
+          # Validate secrets
+          # ------------------------------------------------------
+
           if [ -z "${GITLAB_TOKEN}" ]; then
-            echo "ERROR: GITLAB_TOKEN is not configured."
+            echo "ERROR: GITLAB_TOKEN is empty."
             exit 1
           fi
 
           if [ -z "${GITLAB_USERNAME}" ]; then
-            echo "ERROR: GITLAB_USERNAME is not configured."
+            echo "ERROR: GITLAB_USERNAME is empty."
             exit 1
           fi
 
           if [ -z "${GITLAB_EMAIL}" ]; then
-            echo "ERROR: GITLAB_EMAIL is not configured."
+            echo "ERROR: GITLAB_EMAIL is empty."
             exit 1
           fi
 
           if [ -z "${GITLAB_URL}" ]; then
-            echo "ERROR: GITLAB_URL is not configured."
+            echo "ERROR: GITLAB_URL is empty."
             exit 1
           fi
 
-          # --------------------------------------------------------
-          # Normalize GitLab repository URL
-          #
-          # Supported:
-          #   gitlab.com/group/project.git
-          #   https://gitlab.com/group/project.git
-          #   http://gitlab.com/group/project.git
-          # --------------------------------------------------------
+          # ------------------------------------------------------
+          # Normalize GitLab URL
+          # ------------------------------------------------------
+
           GITLAB_REPO="${GITLAB_URL#https://}"
           GITLAB_REPO="${GITLAB_REPO#http://}"
           GITLAB_REPO="${GITLAB_REPO%/}"
 
           echo "GitLab repository: ${GITLAB_REPO}"
 
-          # --------------------------------------------------------
-          # Configure authenticated GitLab remote
-          # --------------------------------------------------------
+          # ------------------------------------------------------
+          # Configure GitLab remote
+          # ------------------------------------------------------
+
           REMOTE_URL="https://oauth2:${GITLAB_TOKEN}@${GITLAB_REPO}"
 
           git remote remove gitlab >/dev/null 2>&1 || true
           git remote add gitlab "${REMOTE_URL}"
 
-          # --------------------------------------------------------
-          # Verify GitLab authentication and repository access
-          # --------------------------------------------------------
+          # ------------------------------------------------------
+          # Test authentication
+          # ------------------------------------------------------
+
           echo "=========================================="
           echo "Testing GitLab authentication"
           echo "=========================================="
@@ -93,25 +86,15 @@ jobs:
 
           echo "GitLab authentication successful."
 
-          # --------------------------------------------------------
-          # Fetch GitLab main
-          # --------------------------------------------------------
-          echo "=========================================="
-          echo "Fetching GitLab main"
-          echo "=========================================="
-
-          git fetch gitlab main
-
-          echo "GitLab fetch successful."
-
-          # --------------------------------------------------------
+          # ------------------------------------------------------
           # Push GitHub main -> GitLab main
-          # --------------------------------------------------------
+          # ------------------------------------------------------
+
           echo "=========================================="
           echo "Pushing GitHub main -> GitLab main"
           echo "=========================================="
 
-          git push --force-with-lease gitlab HEAD:main
+          git push --force gitlab HEAD:main
 
           echo "=========================================="
           echo "GitLab synchronization completed successfully"
