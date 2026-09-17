@@ -1,4 +1,4 @@
-name: Sync to GitLab
+name: Test GitLab Authentication
 
 on:
   push:
@@ -6,96 +6,63 @@ on:
       - main
 
 jobs:
-  sync:
+  test-gitlab:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Check out source repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Sync to GitLab
+      - name: Test GitLab token
         env:
           GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
           GITLAB_USERNAME: ${{ secrets.GITLAB_USERNAME }}
-          GITLAB_EMAIL: ${{ secrets.GITLAB_EMAIL }}
           GITLAB_URL: ${{ secrets.GITLAB_URL }}
         run: |
           set -euo pipefail
 
           echo "=========================================="
-          echo "Configuring Git"
+          echo "GitLab Configuration"
           echo "=========================================="
 
-          git config --global user.name "${GITLAB_USERNAME}"
-          git config --global user.email "${GITLAB_EMAIL}"
-
-          # ------------------------------------------------------
-          # Validate secrets
-          # ------------------------------------------------------
-
           if [ -z "${GITLAB_TOKEN}" ]; then
-            echo "ERROR: GITLAB_TOKEN is empty."
-            exit 1
-          fi
-
-          if [ -z "${GITLAB_USERNAME}" ]; then
-            echo "ERROR: GITLAB_USERNAME is empty."
-            exit 1
-          fi
-
-          if [ -z "${GITLAB_EMAIL}" ]; then
-            echo "ERROR: GITLAB_EMAIL is empty."
+            echo "ERROR: GITLAB_TOKEN is empty"
             exit 1
           fi
 
           if [ -z "${GITLAB_URL}" ]; then
-            echo "ERROR: GITLAB_URL is empty."
+            echo "ERROR: GITLAB_URL is empty"
             exit 1
           fi
-
-          # ------------------------------------------------------
-          # Normalize GitLab URL
-          # ------------------------------------------------------
 
           GITLAB_REPO="${GITLAB_URL#https://}"
           GITLAB_REPO="${GITLAB_REPO#http://}"
           GITLAB_REPO="${GITLAB_REPO%/}"
 
+          GITLAB_HOST="${GITLAB_REPO%%/*}"
+
+          echo "GitLab host: ${GITLAB_HOST}"
           echo "GitLab repository: ${GITLAB_REPO}"
-
-          # ------------------------------------------------------
-          # Configure GitLab remote
-          # ------------------------------------------------------
-
-          REMOTE_URL="https://oauth2:${GITLAB_TOKEN}@${GITLAB_REPO}"
-
-          git remote remove gitlab >/dev/null 2>&1 || true
-          git remote add gitlab "${REMOTE_URL}"
-
-          # ------------------------------------------------------
-          # Test authentication
-          # ------------------------------------------------------
+          echo "Token length: ${#GITLAB_TOKEN}"
 
           echo "=========================================="
-          echo "Testing GitLab authentication"
+          echo "1. Testing GitLab API authentication"
           echo "=========================================="
 
-          git ls-remote gitlab HEAD
+          curl \
+            --fail \
+            --silent \
+            --show-error \
+            --header "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
+            "https://${GITLAB_HOST}/api/v4/user"
 
-          echo "GitLab authentication successful."
-
-          # ------------------------------------------------------
-          # Push GitHub main -> GitLab main
-          # ------------------------------------------------------
-
-          echo "=========================================="
-          echo "Pushing GitHub main -> GitLab main"
-          echo "=========================================="
-
-          git push --force gitlab HEAD:main
+          echo ""
+          echo "GitLab API authentication: SUCCESS"
 
           echo "=========================================="
-          echo "GitLab synchronization completed successfully"
+          echo "2. Testing Git repository authentication"
           echo "=========================================="
+
+          git ls-remote \
+            "https://oauth2:${GITLAB_TOKEN}@${GITLAB_REPO}" \
+            HEAD
+
+          echo ""
+          echo "Git repository authentication: SUCCESS"
