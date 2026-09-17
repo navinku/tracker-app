@@ -24,15 +24,30 @@ jobs:
           GITLAB_EMAIL: ${{ secrets.GITLAB_EMAIL }}
           GITLAB_URL: ${{ secrets.GITLAB_URL }}
         run: |
+          set -euo pipefail
+
           # Configure Git user
           git config --global user.name "${GITLAB_USERNAME}"
           git config --global user.email "${GITLAB_EMAIL}"
 
-          # Add GitLab as a remote
-          git remote add gitlab https://oauth2:${GITLAB_TOKEN}@${GITLAB_URL} || true
-          # FORMAT GITLAB_URL in Variables : gitlab.domain.com/devops/my-project-name.git
+          # Normalize the GitLab repo URL.
+          # Accept values like:
+          #   gitlab.com/group/project.git
+          #   https://gitlab.com/group/project.git
+          GITLAB_REPO="${GITLAB_URL#https://}"
+          GITLAB_REPO="${GITLAB_REPO#http://}"
+          GITLAB_REPO="${GITLAB_REPO%/}"
 
-          # Push to GitLab (force to ensure sync)
-          # git push --force gitlab main
-          # git push gitlab main:sync-main
-          git push gitlab main
+          if [ -z "${GITLAB_REPO}" ] || [ -z "${GITLAB_TOKEN}" ]; then
+            echo "Error: GITLAB_URL and GITLAB_TOKEN must be configured."
+            exit 1
+          fi
+
+          REMOTE_URL="https://oauth2:${GITLAB_TOKEN}@${GITLAB_REPO}"
+
+          # Remove an old remote if present and recreate it with the correct URL.
+          git remote remove gitlab >/dev/null 2>&1 || true
+          git remote add gitlab "${REMOTE_URL}"
+
+          git fetch gitlab main || true
+          git push --force-with-lease gitlab HEAD:main
