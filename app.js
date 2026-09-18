@@ -117,6 +117,26 @@ app.get('/scores/daily', authenticate, (req, res) => {
   );
 });
 
+app.get('/day-order/:date', authenticate, (req, res) => {
+  db.get(`SELECT slot_order FROM day_order WHERE date = ?`, [req.params.date], (err, row) => {
+    if (err) return res.status(500).send(err.message);
+    res.json({ slot_order: row ? JSON.parse(row.slot_order) : null });
+  });
+});
+
+app.post('/day-order/:date', authenticate, (req, res) => {
+  const { slot_order } = req.body;
+  db.run(
+    `INSERT INTO day_order (date, slot_order) VALUES (?, ?)
+     ON CONFLICT(date) DO UPDATE SET slot_order = excluded.slot_order`,
+    [req.params.date, JSON.stringify(slot_order)],
+    function(err) {
+      if (err) return res.status(500).send(err.message);
+      res.json({ ok: true });
+    }
+  );
+});
+
 app.delete('/log/:id', authenticate, (req, res) => {
   db.run(`DELETE FROM logs WHERE id = ?`, [req.params.id], function(err) {
     if (err) return res.status(500).send(err.message);

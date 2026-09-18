@@ -5,6 +5,49 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tracker — Dashboard</title>
   <link rel="stylesheet" href="style.css">
+  <style>
+    .suggest-wrap { position: relative; }
+    .suggest-chip {
+      display: inline-flex; align-items: center; gap: 0.3rem;
+      margin-top: 0.3rem; margin-bottom: 0.25rem;
+      font-size: 0.62rem; color: #2563eb;
+      background: #0e1628; border: 1px solid #1e3a6e;
+      border-radius: 20px; padding: 0.18rem 0.6rem;
+      cursor: pointer; user-select: none;
+      transition: background 0.15s;
+    }
+    .suggest-chip:hover { background: #162040; }
+    .suggest-chip::before { content: '📋'; font-size: 0.6rem; }
+
+    /* ── Drag & drop ─────────────────────────────────────────── */
+    #today-slots { flex-wrap: wrap; }
+    .slot-pill[draggable="true"] { cursor: grab; }
+    .slot-pill[draggable="true"]:active { cursor: grabbing; }
+    .slot-pill.drag-over {
+      outline: 2px dashed #2563eb;
+      outline-offset: -2px;
+      filter: brightness(1.4);
+    }
+    .slot-pill.dragging { opacity: 0.35; }
+    .slot-pill.locked {
+      cursor: not-allowed;
+      opacity: 0.6;
+    }
+    .lock-icon {
+      font-size: 0.5rem;
+      margin-left: 0.25rem;
+      opacity: 0.4;
+    }
+    .drag-toast {
+      position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%);
+      background: #1a0a0a; border: 1px solid #7f1d1d;
+      color: #f87171; font-size: 0.7rem;
+      padding: 0.45rem 1rem; border-radius: 20px;
+      z-index: 999; pointer-events: none;
+      opacity: 0; transition: opacity 0.2s;
+    }
+    .drag-toast.show { opacity: 1; }
+  </style>
 </head>
 <body>
   <div style="position:fixed;top:1rem;left:1rem;display:flex;gap:1rem;z-index:99;">
@@ -73,9 +116,16 @@
       <div id="today-date" class="today-date"></div>
       <div id="today-slots" class="today-slots"></div>
     </div>
+    <div class="drag-toast" id="drag-toast"></div>
 
-    <input id="now" type="text" placeholder="NOW — what are you focused on?">
-    <input id="next" type="text" placeholder="NEXT — what comes after?">
+    <div class="suggest-wrap">
+      <input id="now" type="text" placeholder="NOW — what are you focused on?">
+      <span class="suggest-chip" id="now-chip" onclick="applySuggest('now')" style="display:none;"></span>
+    </div>
+    <div class="suggest-wrap">
+      <input id="next" type="text" placeholder="NEXT — what comes after?">
+      <span class="suggest-chip" id="next-chip" onclick="applySuggest('next')" style="display:none;"></span>
+    </div>
     <textarea id="drift" placeholder="Drift — what pulled you off track?"></textarea>
     <div class="score-row">
       <input id="score" type="number" min="1" max="5" placeholder="Score">
@@ -133,7 +183,11 @@
         if (!res.ok) return;
         const data = await res.json();
         rows = applyOverrides(SCHEDULE_ROWS, data);
-        buildSchedule();
+        daySlots = [];   // reset so buildDaySlots re-runs with fresh data
+        buildSchedule(); // this calls buildDaySlots which sets baseWorkMins
+        await loadDayOrder(getDayIdx()); // restore saved order for today
+        buildSchedule(); // re-render with restored order
+        computeSuggestions();
       } catch {}
     }
 
@@ -160,6 +214,40 @@
       return -1;
     }
 
+    /* ─── Work category set ──────────────────────────────── */
+    const WORK_CATS = new Set(['deep','tickets','enhance','emea','us','worklearn','docs','apac']);
+
+    function isWorkCat(cat) { return WORK_CATS.has(cat); }
+
+    /* duration in minutes for a row */
+    function rowMins(row) {
+      if (row.overnight) return 0;
+      const s = toMins(row.s[0], row.s[1]);
+      const e = toMins(row.e[0], row.e[1]);
+      return Math.max(0, e - s);
+    }
+
+    /* total work minutes for a given day index using current daySlots order */
+    function totalWorkMins(slots) {
+      return slots.reduce((sum, s) => sum + (isWorkCat(s.cat) ? s.mins : 0), 0);
+    }
+
+    /* ─── Per-day slot order (session state) ──────────────────── */
+    // daySlots: array of { ri, label, cat, mins } in display order for today
+    let daySlots = [];
+    let baseWorkMins = 0;   // original work mins — floor that must be maintained
+    let toastTimer = null;
+
+    function buildDaySlots(dayIdx) {
+      daySlots = [];
+      rows.forEach((row, ri) => {
+        const [label, cat] = row.cells[dayIdx];
+        if (cat === 'off' || cat === 'sleep') return;
+        daySlots.push({ ri, label, cat, mins: rowMins(row) });
+      });
+      baseWorkMins = totalWorkMins(daySlots);
+    }
+
     function buildSchedule() {
       const now   = new Date();
       const days  = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -171,52 +259,198 @@
       const activeRow = getActiveRow();
       const cur       = toMins(now.getHours(), now.getMinutes());
 
+      // build daySlots only on first call (preserve drag order on re-renders)
+      if (daySlots.length === 0) buildDaySlots(dayIdx);
+
       const wrap = document.getElementById('today-slots');
       wrap.innerHTML = '';
 
-      rows.forEach((row, ri) => {
-        const [label, cls] = row.cells[dayIdx];
-        if (cls === 'off' || cls === 'sleep') return;
-
-        const start = toMins(row.s[0], row.s[1]);
-        const end   = toMins(row.e[0], row.e[1]);
+      daySlots.forEach((slot, si) => {
+        const row = rows[slot.ri];
+        const end = toMins(row.e[0], row.e[1]);
+        const isActive = slot.ri === activeRow;
 
         let state = '';
-        if (ri === activeRow) {
+        if (isActive) {
           state = 'active-slot';
-        } else {
-          const isPast = row.overnight
-            ? false
-            : end <= cur;
-          if (isPast) state = 'past';
+        } else if (!row.overnight && end <= cur) {
+          state = 'past';
         }
 
         const pill = document.createElement('div');
-        pill.className = `slot-pill slot-${cls} ${state}`;
-        pill.id = `pill-${ri}`;
-        pill.innerHTML = `<span class="pill-time">${row.time}</span><span class="pill-label">${label}</span>`;
+        pill.className = `slot-pill slot-${slot.cat} ${state}`;
+        pill.id = `pill-${si}`;
+        pill.dataset.si = si;
+
+        const isLocked = isActive;
+        if (isLocked) {
+          pill.classList.add('locked');
+          pill.innerHTML = `<span class="pill-time">${row.time}</span><span class="pill-label">${slot.label}</span><span class="lock-icon">🔒</span>`;
+        } else {
+          pill.draggable = true;
+          pill.innerHTML = `<span class="pill-time">${row.time}</span><span class="pill-label">${slot.label}</span>`;
+          pill.addEventListener('dragstart', onDragStart);
+          pill.addEventListener('dragend',   onDragEnd);
+          pill.addEventListener('dragover',  onDragOver);
+          pill.addEventListener('dragleave', onDragLeave);
+          pill.addEventListener('drop',      onDrop);
+        }
         wrap.appendChild(pill);
       });
     }
 
+    /* ─── Drag & drop handlers ─────────────────────────────── */
+    let dragSi = null;
+
+    function onDragStart(e) {
+      dragSi = parseInt(e.currentTarget.dataset.si);
+      e.currentTarget.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    }
+
+    function onDragEnd(e) {
+      e.currentTarget.classList.remove('dragging');
+      document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+      dragSi = null;
+    }
+
+    function onDragOver(e) {
+      e.preventDefault();
+      e.currentTarget.classList.add('drag-over');
+    }
+
+    function onDragLeave(e) {
+      e.currentTarget.classList.remove('drag-over');
+    }
+
+    function onDrop(e) {
+      e.preventDefault();
+      e.currentTarget.classList.remove('drag-over');
+      const dropSi = parseInt(e.currentTarget.dataset.si);
+      if (dragSi === null || dragSi === dropSi) return;
+
+      // simulate swap and check work hours constraint
+      const tentative = [...daySlots];
+      [tentative[dragSi], tentative[dropSi]] = [tentative[dropSi], tentative[dragSi]];
+
+      if (totalWorkMins(tentative) < baseWorkMins) {
+        showToast('⚠️ Swap blocked — would reduce total work hours below ' + (baseWorkMins / 60).toFixed(1) + ' h');
+        return;
+      }
+
+      daySlots = tentative;
+      buildSchedule();
+      computeSuggestions();
+      saveDayOrder();
+    }
+
+    function showToast(msg) {
+      const t = document.getElementById('drag-toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => t.classList.remove('show'), 2800);
+    }
+
     function updateActiveSlot() {
       const activeRow = getActiveRow();
+      const cur = toMins(new Date().getHours(), new Date().getMinutes());
       document.querySelectorAll('.slot-pill').forEach(p => {
-        const ri = parseInt(p.id.replace('pill-', ''));
+        const si = parseInt(p.dataset.si);
+        const slot = daySlots[si];
+        if (!slot) return;
+        const row = rows[slot.ri];
         p.classList.remove('active-slot', 'past');
-        if (ri === activeRow) {
+        if (slot.ri === activeRow) {
           p.classList.add('active-slot');
-        } else {
-          const row = rows[ri];
-          const cur = toMins(new Date().getHours(), new Date().getMinutes());
-          const end = toMins(row.e[0], row.e[1]);
-          if (!row.overnight && end <= cur) p.classList.add('past');
+        } else if (!row.overnight && toMins(row.e[0], row.e[1]) <= cur) {
+          p.classList.add('past');
         }
       });
+      computeSuggestions();
     }
 
     loadOverrides();
     setInterval(updateActiveSlot, 10000);
+
+    /* ─── Day order persistence ─────────────────────────────── */
+    function todayKey() {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    }
+
+    async function saveDayOrder() {
+      const order = daySlots.map(s => s.ri);
+      await fetch(`/day-order/${todayKey()}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': token },
+        body: JSON.stringify({ slot_order: order })
+      });
+    }
+
+    async function loadDayOrder(dayIdx) {
+      try {
+        const res = await fetch(`/day-order/${todayKey()}`, { headers: { 'Authorization': token } });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data.slot_order) return;
+        // reconstruct daySlots in saved order, filtering out any ri no longer valid
+        const riMap = {};
+        daySlots.forEach(s => { riMap[s.ri] = s; });
+        const restored = data.slot_order
+          .filter(ri => riMap[ri] !== undefined)
+          .map(ri => riMap[ri]);
+        // append any new slots not in saved order
+        const savedSet = new Set(data.slot_order);
+        daySlots.forEach(s => { if (!savedSet.has(s.ri)) restored.push(s); });
+        // validate work hours still intact
+        if (totalWorkMins(restored) >= baseWorkMins) daySlots = restored;
+      } catch {}
+    }
+    let suggestNow = '', suggestNext = '';
+
+    function computeSuggestions() {
+      const activeRow = getActiveRow();
+      suggestNow  = '';
+      suggestNext = '';
+
+      const activeSi = daySlots.findIndex(s => s.ri === activeRow);
+      if (activeSi >= 0) {
+        suggestNow = daySlots[activeSi].label;
+        for (let i = activeSi + 1; i < daySlots.length; i++) {
+          if (daySlots[i].cat !== 'sleep' && daySlots[i].cat !== 'off') {
+            suggestNext = daySlots[i].label;
+            break;
+          }
+        }
+      }
+
+      const nowChip  = document.getElementById('now-chip');
+      const nextChip = document.getElementById('next-chip');
+
+      if (suggestNow) {
+        nowChip.textContent  = suggestNow;
+        nowChip.style.display = 'inline-flex';
+      } else {
+        nowChip.style.display = 'none';
+      }
+
+      if (suggestNext) {
+        nextChip.textContent  = suggestNext;
+        nextChip.style.display = 'inline-flex';
+      } else {
+        nextChip.style.display = 'none';
+      }
+
+      // pre-fill only if field is empty
+      if (!document.getElementById('now').value  && suggestNow)  document.getElementById('now').value  = suggestNow;
+      if (!document.getElementById('next').value && suggestNext) document.getElementById('next').value = suggestNext;
+    }
+
+    function applySuggest(field) {
+      if (field === 'now'  && suggestNow)  document.getElementById('now').value  = suggestNow;
+      if (field === 'next' && suggestNext) document.getElementById('next').value = suggestNext;
+    }
 
     /* ─── Tracker CRUD ────────────────────────────────────────── */
     async function save() {
@@ -238,6 +472,7 @@
       document.getElementById('next').value  = '';
       document.getElementById('drift').value = '';
       document.getElementById('score').value = '';
+      computeSuggestions();
       loadLogs();
     }
 

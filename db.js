@@ -27,6 +27,12 @@ db.serialize(() => {
       PRIMARY KEY (row_idx, day_idx)
     )
   `);
+  db.run(`
+    CREATE TABLE IF NOT EXISTS day_order (
+      date       TEXT PRIMARY KEY,
+      slot_order TEXT NOT NULL
+    )
+  `);
 });
 
 module.exports = db;
