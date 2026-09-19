@@ -430,31 +430,10 @@
         }
       }
 
-      const nowChip  = document.getElementById('now-chip');
-      const nextChip = document.getElementById('next-chip');
-
-      if (suggestNow) {
-        nowChip.textContent  = suggestNow;
-        nowChip.style.display = 'inline-flex';
-      } else {
-        nowChip.style.display = 'none';
-      }
-
-      if (suggestNext) {
-        nextChip.textContent  = suggestNext;
-        nextChip.style.display = 'inline-flex';
-      } else {
-        nextChip.style.display = 'none';
-      }
-
-      // pre-fill only if field is empty
-      if (!document.getElementById('now').value  && suggestNow)  document.getElementById('now').value  = suggestNow;
-      if (!document.getElementById('next').value && suggestNext) document.getElementById('next').value = suggestNext;
-    }
-
-    function applySuggest(field) {
-      if (field === 'now'  && suggestNow)  document.getElementById('now').value  = suggestNow;
-      if (field === 'next' && suggestNext) document.getElementById('next').value = suggestNext;
+      const nowEl  = document.getElementById('now');
+      const nextEl = document.getElementById('next');
+      if (!nowEl.value  && suggestNow)  nowEl.value  = suggestNow;
+      if (!nextEl.value && suggestNext) nextEl.value = suggestNext;
     }
 
     /* ─── Tracker CRUD ────────────────────────────────────────── */
