@@ -6,7 +6,9 @@
   <title>Tracker — Dashboard</title>
   <link rel="stylesheet" href="style.css">
   <style>
-    .suggest-wrap { position: relative; }
+    .field-row { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+    .field-row label { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; color: #888; width: 44px; flex-shrink: 0; text-align: right; }
+    .field-row input, .field-row textarea { flex: 1; }
     .suggest-chip {
       display: inline-flex; align-items: center; gap: 0.3rem;
       margin-top: 0.3rem; margin-bottom: 0.25rem;
@@ -118,18 +120,21 @@
     </div>
     <div class="drag-toast" id="drag-toast"></div>
 
-    <div class="suggest-wrap">
-      <input id="now" type="text" placeholder="NOW — what are you focused on?">
-      <span class="suggest-chip" id="now-chip" onclick="applySuggest('now')" style="display:none;"></span>
+    <div class="field-row">
+      <label for="now">NOW</label>
+      <input id="now" type="text" placeholder="What are you focused on?">
     </div>
-    <div class="suggest-wrap">
-      <input id="next" type="text" placeholder="NEXT — what comes after?">
-      <span class="suggest-chip" id="next-chip" onclick="applySuggest('next')" style="display:none;"></span>
+    <div class="field-row">
+      <label for="next">NEXT</label>
+      <input id="next" type="text" placeholder="What comes after?">
     </div>
-    <textarea id="drift" placeholder="Drift — what pulled you off track?"></textarea>
-    <div class="score-row">
-      <input id="score" type="number" min="1" max="5" placeholder="Score">
-      <span>/ 5</span>
+    <div class="field-row">
+      <label for="drift">DRIFT</label>
+      <textarea id="drift" placeholder="What pulled you off track?"></textarea>
+    </div>
+    <div class="field-row">
+      <label for="score">SCORE</label>
+      <input id="score" type="number" min="1" max="5" placeholder="1–5">
     </div>
     <button onclick="save()">Save Entry</button>
 
